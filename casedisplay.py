@@ -1,10 +1,10 @@
 """CaseDisplay - lightweight driver for the case screen (DarkFlash LCD, USB 1D6B:0148).
 
-  - renders a DarkFlash-format theme (theme\\theme.json) with LibreHardwareMonitor sensors
-  - sends a frame every `interval_seconds` only when the picture changed (or every `keepalive_seconds`)
+  - renders theme\\theme.json (format v2; DarkFlash themes are converted) with LibreHardwareMonitor sensors
+  - renders and sends only when the displayed values change (resend every `keepalive_seconds`)
   - screen off while the session is locked or the monitors are asleep (display power off)
-  - any USB error -> close, reopen, handshake again
-  - never touches the device while DarkFlash.exe is running (two writers hang the LCD firmware)
+  - any USB error -> close, reopen, handshake again; theme/render errors keep the last picture
+  - do not run together with the DarkFlash app (two writers hang the LCD firmware)
   - reloads config.json / theme when the files change; restarts itself when a .py file changes
   - settings editor: http://127.0.0.1:8765/
 
@@ -12,12 +12,11 @@ Run:  CaseDisplay.exe casedisplay.py              (renamed pythonw.exe + pyvenv.
       python casedisplay.py --console [--seconds N]
 Log:  C:\\ProgramData\\CaseDisplay.log
 """
-import argparse, ctypes, hashlib, io, json, os, sys, threading, time, datetime, traceback
+import argparse, ctypes, io, json, os, sys, threading, time, datetime, traceback
 from ctypes import wintypes
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE)
-import psutil
 import theme_render
 from lcd_protocol import Lcd, LcdError
 
@@ -150,13 +149,6 @@ class DisplayPower:
             log(f"display power watch failed: {e}")
 
 
-def darkflash_running():
-    for p in psutil.process_iter(["name"]):
-        if (p.info["name"] or "").lower() == "darkflash.exe":
-            return True
-    return False
-
-
 def encode_jpeg(img, quality, max_bytes):
     q = quality
     while True:
@@ -192,7 +184,6 @@ class Files:
         tp = tp if os.path.isabs(tp) else os.path.join(BASE, tp)
         st = self._stamp(tp)
         if st != self.stamp:
-            theme_render.load_background.cache_clear()
             self.theme = theme_render.Theme.from_file(tp)
             self.cfg, self.stamp = cfg, st
             return True
@@ -215,6 +206,7 @@ def main():
     lcd = Lcd(log)
     stamp = code_stamp()
     display = DisplayPower()
+    webui = None
     try:
         import webui
         webui.start(log)
@@ -223,9 +215,16 @@ def main():
 
     applied = {}               # brightness/rotate currently applied on device
     screen_on = False
-    last_hash, last_send, last_hb = None, 0.0, 0.0
+    last_sig, last_jpg, last_send, last_hb = None, None, 0.0, 0.0
+    last_render_error = ""
     last_tick = time.time(); t_start = time.time()
-    df_logged = False
+    try:
+        if webui:
+            removed = webui.gc_backgrounds()
+            if removed:
+                log(f"removed {len(removed)} unused background file(s)")
+    except Exception:
+        pass
     log(f"started pid={os.getpid()} exe={os.path.basename(sys.executable)} theme={files.cfg.get('theme')} interval={files.cfg.get('interval_seconds')}s")
 
     while True:
@@ -236,18 +235,9 @@ def main():
             if not a.seconds and code_stamp() != stamp:
                 restart_self(lcd)
             if files.refresh():
-                log("config/theme reloaded"); last_hash = None   # keep `applied`: only changed values are re-sent
+                log("config/theme reloaded"); last_sig = None   # keep `applied`: only changed values are re-sent
             cfg = files.cfg
             interval = float(cfg.get("interval_seconds", 2))
-
-            # 1) never share the device with DarkFlash
-            if darkflash_running():
-                if lcd.is_open:
-                    lcd.close(); log("DarkFlash detected - device released")
-                if not df_logged:
-                    log("DarkFlash is running - waiting"); df_logged = True
-                screen_on = False; time.sleep(10); last_tick = time.time(); continue
-            df_logged = False
 
             # 2) resumed from sleep (big gap) -> reconnect
             if loop_start - last_tick > max(15, interval * 5) and lcd.is_open:
@@ -262,7 +252,7 @@ def main():
                 log(f"connected fw={props.get('version', {}).get('firmware')} brightness={props.get('brightness')} degree={props.get('degree')}")
                 applied = {"brightness": props.get("brightness"), "rotate": props.get("degree")}
                 lcd.resume(); lcd.heartbeat(); time.sleep(2)
-                lcd.realtime(True); screen_on = True; last_hash = None
+                lcd.realtime(True); screen_on = True; last_sig = None
 
             # 4) device settings from config
             if "brightness" in cfg and cfg["brightness"] != applied.get("brightness"):
@@ -279,16 +269,29 @@ def main():
             if reason and screen_on:
                 lcd.realtime(False); time.sleep(0.4); lcd.suspend(); screen_on = False; log(f"{reason} - screen off")
             elif not reason and not screen_on:
-                lcd.resume(); time.sleep(1); lcd.realtime(True); screen_on = True; last_hash = None; log("screen on")
+                lcd.resume(); time.sleep(1); lcd.realtime(True); screen_on = True; last_sig = None; log("screen on")
 
             # 6) frame or heartbeat
             now = time.time()
             if screen_on:
-                img = files.theme.render(theme_render.read_sensors(cfg.get("lhm_url", "http://localhost:8085/data.json")))
-                jpg = encode_jpeg(img, int(cfg.get("jpeg_quality", 85)), int(cfg.get("jpeg_max_bytes", 140000)))
-                h = hashlib.md5(jpg).digest()
-                if h != last_hash or now - last_send >= float(cfg.get("keepalive_seconds", 20)):
-                    lcd.send_jpeg(jpg); last_hash, last_send = h, now
+                jpg = None
+                try:
+                    snap = theme_render.read_sensors(cfg.get("lhm_url", "http://localhost:8085/data.json"))
+                    theme_render.HISTORY.sample(snap)
+                    sig = (files.stamp, files.theme.signature(snap))
+                    if sig != last_sig:                       # render only when the picture would change
+                        img = files.theme.render(snap)
+                        jpg = encode_jpeg(img, int(cfg.get("jpeg_quality", 95)), int(cfg.get("jpeg_max_bytes", 140000)))
+                        last_sig = sig
+                    last_render_error = ""
+                except Exception as e:                        # bad theme etc.: keep the connection and the last picture
+                    msg = "".join(traceback.format_exception_only(type(e), e)).strip()
+                    if msg != last_render_error:
+                        log("render error (keeping last frame): " + msg); last_render_error = msg
+                if jpg is not None:
+                    lcd.send_jpeg(jpg); last_jpg, last_send = jpg, now
+                elif last_jpg is not None and now - last_send >= float(cfg.get("keepalive_seconds", 20)):
+                    lcd.send_jpeg(last_jpg); last_send = now
             elif now - last_hb >= 4:
                 lcd.heartbeat(); last_hb = now
 

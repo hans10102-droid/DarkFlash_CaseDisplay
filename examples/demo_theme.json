@@ -1,0 +1,182 @@
+{
+ "version": 2,
+ "background": {
+  "path": "background.png"
+ },
+ "widgets": [
+  {
+   "id": "r1",
+   "type": "ring",
+   "x": 30,
+   "y": 40,
+   "size": 150,
+   "thickness": 14,
+   "source": "CPU Temperature",
+   "min": 20,
+   "max": 95,
+   "bg": "rgba(255,255,255,0.18)",
+   "colorStart": "rgba(19,187,206,1)",
+   "colorEnd": "rgba(255,60,60,1)",
+   "font": {
+    "family": "Agency FB",
+    "size": 40,
+    "bold": true
+   },
+   "color": "rgba(255,255,255,1)",
+   "label": "CPU",
+   "labelFont": {
+    "family": "Agency FB",
+    "size": 18
+   },
+   "labelColor": "rgba(180,220,255,1)",
+   "colorRanges": [
+    {
+     "from": 80,
+     "color": "rgba(255,90,90,1)"
+    }
+   ],
+   "card": {
+    "enabled": true,
+    "color": "rgba(0,0,0,0.35)",
+    "radius": 16,
+    "padding": 8
+   }
+  },
+  {
+   "id": "g1",
+   "type": "gauge",
+   "x": 220,
+   "y": 40,
+   "size": 200,
+   "thickness": 14,
+   "source": "GPU Power",
+   "min": 0,
+   "max": 300,
+   "ticks": 10,
+   "font": {
+    "family": "Agency FB",
+    "size": 30,
+    "bold": true
+   },
+   "color": "rgba(255,255,255,1)",
+   "label": "GPU POWER",
+   "labelFont": {
+    "family": "Agency FB",
+    "size": 14
+   },
+   "card": {
+    "enabled": true,
+    "color": "rgba(0,0,0,0.35)",
+    "radius": 16,
+    "padding": 8
+   }
+  },
+  {
+   "id": "gr1",
+   "type": "graph",
+   "x": 470,
+   "y": 40,
+   "w": 450,
+   "h": 150,
+   "source": "CPU Usage",
+   "seconds": 120,
+   "min": 0,
+   "max": 100,
+   "style": "area",
+   "lineColor": "rgba(63,182,255,1)",
+   "fillColor": "rgba(63,182,255,0.30)",
+   "card": {
+    "enabled": true,
+    "color": "rgba(0,0,0,0.35)",
+    "radius": 12,
+    "padding": 8
+   }
+  },
+  {
+   "id": "t1",
+   "type": "text",
+   "x": 480,
+   "y": 48,
+   "content": "CPU USAGE 2min",
+   "font": {
+    "family": "Agency FB",
+    "size": 18
+   },
+   "color": "rgba(200,220,255,0.9)"
+  },
+  {
+   "id": "b1",
+   "type": "bar",
+   "x": 40,
+   "y": 300,
+   "w": 380,
+   "h": 26,
+   "source": "Memory Usage",
+   "min": 0,
+   "max": 100,
+   "segments": 20,
+   "gap": 3,
+   "radius": 3,
+   "bg": "rgba(255,255,255,0.15)",
+   "colorStart": "rgba(19,187,206,1)",
+   "colorEnd": "rgba(255,60,60,1)"
+  },
+  {
+   "id": "b2",
+   "type": "bar",
+   "x": 40,
+   "y": 350,
+   "w": 380,
+   "h": 26,
+   "source": "GPU Usage",
+   "min": 0,
+   "max": 100,
+   "radius": 13,
+   "bg": "rgba(255,255,255,0.15)",
+   "colorStart": "rgba(120,90,255,1)",
+   "colorEnd": "rgba(255,80,200,1)"
+  },
+  {
+   "id": "v1",
+   "type": "value",
+   "x": 470,
+   "y": 290,
+   "source": "GPU Temperature",
+   "font": {
+    "family": "Agency FB",
+    "size": 64,
+    "bold": true
+   },
+   "color": "rgba(255,255,255,1)",
+   "colorRanges": [
+    {
+     "from": 60,
+     "color": "rgba(255,200,60,1)"
+    },
+    {
+     "from": 80,
+     "color": "rgba(255,70,70,1)"
+    }
+   ],
+   "card": {
+    "enabled": true,
+    "color": "rgba(0,0,0,0.45)",
+    "radius": 14,
+    "padding": 10
+   }
+  },
+  {
+   "id": "v2",
+   "type": "value",
+   "x": 720,
+   "y": 400,
+   "source": "Time",
+   "font": {
+    "family": "Agency FB",
+    "size": 48,
+    "bold": true
+   },
+   "color": "rgba(255,255,255,0.95)"
+  }
+ ]
+}
