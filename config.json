@@ -1,0 +1,12 @@
+{
+ "theme": "theme\\theme.json",
+ "interval_seconds": 2.0,
+ "keepalive_seconds": 20,
+ "brightness": 58,
+ "rotate": 270,
+ "jpeg_quality": 85,
+ "jpeg_max_bytes": 140000,
+ "lhm_url": "http://localhost:8085/data.json",
+ "off_when_locked": true,
+ "off_when_display_off": true
+}

@@ -1,0 +1,12 @@
+# runtime (renamed pythonw + Python DLLs, created per machine)
+CaseDisplay.exe
+*.dll
+pyvenv.cfg
+__pycache__/
+*.pyc
+*.tmp
+
+# personal / copyrighted content
+theme/background*.png
+theme/background*.jpg
+theme/records/
