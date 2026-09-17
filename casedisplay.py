@@ -3,6 +3,7 @@
   - renders theme\\theme.json (format v2; DarkFlash themes are converted) with LibreHardwareMonitor sensors
   - renders and sends only when the displayed values change (resend every `keepalive_seconds`)
   - screen off while the session is locked or the monitors are asleep (display power off)
+  - screen off when Windows shuts down / restarts / signs out (the LCD keeps standby power otherwise)
   - any USB error -> close, reopen, handshake again; theme/render errors keep the last picture
   - do not run together with the DarkFlash app (two writers hang the LCD firmware)
   - reloads config.json / theme when the files change; restarts itself when a .py file changes
@@ -99,12 +100,17 @@ class _WNDCLASS(ctypes.Structure):
 
 
 class DisplayPower:
-    """Tracks GUID_CONSOLE_DISPLAY_STATE (0 off, 1 on, 2 dimmed) via a hidden window's WM_POWERBROADCAST."""
+    """Tracks GUID_CONSOLE_DISPLAY_STATE (0 off, 1 on, 2 dimmed) via a hidden window's WM_POWERBROADCAST,
+    and Windows session end (shutdown/restart/sign-out) via WM_QUERYENDSESSION / WM_ENDSESSION.
+    The window thread never touches the LCD: it sets `ending`, the main loop turns the screen off and sets `dark`."""
     GUID = (0x6fe69556, 0x704a, 0x47a0, (0x8f, 0x24, 0xc2, 0x8d, 0x93, 0x6f, 0xda, 0x47))
+    END_WAIT = 4.0   # seconds WM_ENDSESSION waits for the screen to go dark (Windows force-closes apps after ~5s)
 
     def __init__(self):
         self.state = 1
         self.ok = False
+        self.ending = threading.Event()
+        self.dark = threading.Event()
         threading.Thread(target=self._run, name="displaypower", daemon=True).start()
 
     @property
@@ -132,6 +138,18 @@ class DisplayPower:
                         if new != self.state:
                             log(f"display power: {['off', 'on', 'dimmed'][new] if new < 3 else new}")
                         self.state = new
+                elif msg == 0x0011 and not (lp & 0x1):  # WM_QUERYENDSESSION (not ENDSESSION_CLOSEAPP): start turning off now
+                    self.dark.clear(); self.ending.set()
+                    return 1
+                elif msg == 0x0016 and not (lp & 0x1):  # WM_ENDSESSION
+                    if wp:
+                        if not self.ending.is_set():
+                            self.dark.clear(); self.ending.set()
+                        if not self.dark.wait(self.END_WAIT):
+                            log("session ending - screen off not confirmed in time")
+                    elif self.ending.is_set():
+                        self.ending.clear(); self.dark.clear()   # shutdown was cancelled
+                    return 0
                 return u.DefWindowProcW(hwnd, msg, wp, lp)
 
             self._proc = _WNDPROC(wndproc)   # keep a reference
@@ -215,6 +233,7 @@ def main():
 
     applied = {}               # brightness/rotate currently applied on device
     screen_on = False
+    ended = False              # screen turned off for Windows session end
     last_sig, last_jpg, last_send, last_hb = None, None, 0.0, 0.0
     last_render_error = ""
     last_tick = time.time(); t_start = time.time()
@@ -231,6 +250,26 @@ def main():
         loop_start = time.time()
         if a.seconds and loop_start - t_start > a.seconds:
             log("test duration reached - exit"); break
+
+        # 1) Windows is shutting down / restarting / signing out: screen off, then leave the device alone
+        if display.ending.is_set():
+            if not ended:
+                ended = True
+                try:
+                    if lcd.is_open:
+                        if screen_on:
+                            lcd.realtime(False); time.sleep(0.4)
+                        lcd.suspend()
+                    log("session ending (shutdown/restart/sign-out) - screen off")
+                except Exception as e:
+                    log(f"session ending - screen off failed: {e}")
+                screen_on = False
+            display.dark.set()
+            time.sleep(0.2)
+            continue
+        if ended:
+            ended = False; log("session end cancelled")   # step 5 turns the screen back on
+
         try:
             if not a.seconds and code_stamp() != stamp:
                 restart_self(lcd)
@@ -303,7 +342,7 @@ def main():
             lcd.close(); screen_on = False; time.sleep(5)
 
         elapsed = time.time() - loop_start
-        time.sleep(max(0.2, float(files.cfg.get("interval_seconds", 2)) - elapsed))
+        display.ending.wait(max(0.2, float(files.cfg.get("interval_seconds", 2)) - elapsed))   # wake at once on session end
 
     lcd.close()
 

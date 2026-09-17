@@ -16,6 +16,7 @@ DarkFlash 케이스 화면(LCD, USB HID `1D6B:0148`, 960×480)을 DarkFlash 앱 
 - DarkFlash 테마(`.thm`에서 꺼낸 JSON)는 불러올 때 자동 변환
 - 센서: [LibreHardwareMonitor](https://github.com/LibreHardwareMonitor/LibreHardwareMonitor) 웹 서버(`http://localhost:8085/data.json`)
 - 잠금 화면 또는 모니터 절전 시 케이스 화면 끄기, 해제 시 켜기
+- Windows 종료·재시작·로그아웃 시 케이스 화면 끄기 (대기전력으로 마지막 화면이 남지 않게)
 - 표시값이 바뀔 때만 렌더링·전송, 테마 오류가 나도 연결과 마지막 화면 유지
 - USB 오류 시 자동 재연결, 설정·테마 파일 변경 즉시 반영, 코드 변경 시 자동 재시작
 - 설정 화면 `http://127.0.0.1:8765/`
